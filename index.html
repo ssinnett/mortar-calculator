@@ -1,278 +1,137 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BRM5 Mortar Calculator</title>
-    <style>
-        body {
-            background-color: #000000;
-            color: #b0b0b0;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            box-sizing: border-box;
-        }
+// Run with: node calculator.js  (Node 17+)
+const readline = require("readline/promises");
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+const ask = (prompt = "") => rl.question(prompt);
 
-        .calculator-container {
-            width: 100%;
-            max-width: 900px;
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-        }
+const G = 9.81;
+const u = 80;
 
-        .panel {
-            background-color: #121212;
-            border: 1px solid #222222;
-            border-radius: 8px;
-            padding: 24px;
-        }
+// Python-style round(): half-to-even on exact ties
+function round(x, n = 0) {
+  const s = x.toFixed(Math.min(100, n + 30));
+  const dot = s.indexOf(".");
+  const tail = s.slice(dot + 1 + n);
+  if (/^50*$/.test(tail)) {
+    const t = s.slice(0, n === 0 ? dot : dot + 1 + n);
+    if (Number(t[t.length - 1]) % 2 === 0) return Number(t);
+  }
+  return Number(x.toFixed(n));
+}
 
-        .panel-title {
-            color: #ffffff;
-            font-size: 14px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-top: 0;
-            margin-bottom: 16px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid #222222;
-        }
+// Python prints floats like 5.0 rather than 5
+const pf = (v) => (Number.isInteger(v) ? v.toFixed(1) : String(v));
 
-        select {
-            width: 100%;
-            background-color: #0a0a0a;
-            border: 1px solid #262626;
-            color: #ffffff;
-            padding: 12px;
-            font-family: inherit;
-            font-size: 14px;
-            border-radius: 4px;
-            outline: none;
-            cursor: pointer;
-        }
+async function get_float(prompt) {
+  while (true) {
+    const ans = (await ask(prompt)).trim();
+    if (ans === "") return 0.0;
+    const num = Number(ans);
+    if (!Number.isNaN(num)) return num;
+    console.log("Enter a valid number: ");
+  }
+}
 
-        .grid-inputs {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-        }
+function check(d, s) {
+  if (u ** 4 - G * (G * d ** 2 + 2 * s * u ** 2) >= 0) return true;
+  else return false;
+}
 
-        .input-group {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
+function time(theta, d) {
+  return d / (u * Math.cos((theta * Math.PI) / 180));
+}
 
-        .full-width {
-            grid-column: span 2;
-        }
+async function find_elevation(dx, dy) {
+  const range = await get_float("Enter range from your range finder: ");
+  const horizontalD = (dx ** 2 + dy ** 2) ** (1 / 2);
+  return (range ** 2 - horizontalD ** 2) ** (1 / 2);
+}
 
-        label {
-            font-size: 11px;
-            color: #707070;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        input {
-            background-color: #0a0a0a;
-            border: 1px solid #262626;
-            color: #ffffff;
-            padding: 12px;
-            font-family: inherit;
-            font-size: 14px;
-            border-radius: 4px;
-            outline: none;
-            width: 100%;
-            box-sizing: border-box;
-        }
-
-        input:focus {
-            border-color: #444444;
-        }
-
-        input::-webkit-outer-spin-button,
-        input::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-        }
-        input[type=number] {
-            -moz-appearance: textfield;
-        }
-
-        button {
-            background-color: #1c1c1c;
-            border: 1px solid #333333;
-            color: #ffffff;
-            padding: 14px;
-            font-family: inherit;
-            font-size: 13px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            cursor: pointer;
-            border-radius: 4px;
-            transition: background-color 0.2s, border-color 0.2s;
-            width: 100%;
-        }
-
-        button:hover {
-            background-color: #262626;
-            border-color: #444444;
-        }
-
-        .divider {
-            border: none;
-            border-top: 1px solid #222222;
-            margin: 12px 0;
-            width: 100%;
-        }
-
-        .output-row {
-            font-size: 15px;
-            color: #ffffff;
-            padding: 10px 0;
-        }
-
-        .output-highlight {
-            color: #ffffff;
-            font-weight: bold;
-        }
-        
-        .output-error {
-            color: #ff4a4a;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-    </style>
-</head>
-<body>
-
-<div class="calculator-container">
-    
-    <!-- Mode Selection Menu -->
-    <div class="panel">
-        <div class="panel-title">Select Mode</div>
-        <select id="modeSelect" onchange="switchMode()">
-            <option value="1" selected>1 - Known Elevation Difference Mode</option>
-            <option value="2">2 - Find Elevation Using Rangefinder Mode</option>
-            <option value="3">3 - Enter Data String Mode</option>
-            <option value="4">4 - Rangefinder Angle and Range Mode</option>
-        </select>
-    </div>
-
-    <!-- Inputs Panel -->
-    <div class="panel">
-        <div class="panel-title" id="inputsTitle">Inputs</div>
-        <div class="grid-inputs" id="dynamicInputsContainer"></div>
-    </div>
-
-    <button onclick="runCalculation()">Calculate Solutions</button>
-
-    <hr class="divider">
-
-    <!-- Output Panel Layout -->
-    <div class="panel">
-        <div class="panel-title">Calculation Console Output</div>
-        <div class="output-row" id="outputPanel">
-            <span style="color:#555;">Awaiting dynamic calculations...</span>
-        </div>
-    </div>
-    
-    <!-- Side Note Block -->
-    <div style="margin-top: 40px; border-top: 1px solid #1a1a1a; padding-top: 15px; font-size: 11px; color: #555555; text-align: center; letter-spacing: 0.5px; line-height: 1.6;">
-       Aim a little bit to the right(abt 1 to 2 degree) for farther target <br>
-       Credits to u/alex52794
-    </div>
-
-</div>
-
-<script>
-    // Exact Global Constants from Python Source
-    const G = 9.81;
-    const u = 80;
-
-    // Use a faster, safer event listener instead of window.onload
-    document.addEventListener("DOMContentLoaded", function() {
-        switchMode();
-    });
-
-    function switchMode() {
-        const mode = document.getElementById('modeSelect').value;
-        const container = document.getElementById('dynamicInputsContainer');
-        const title = document.getElementById('inputsTitle');
-        resetOutput();
-
-        if (mode === "1") {
-            title.innerText = "Mode 1: Known Elevation Difference";
-            container.innerHTML = `
-                <div class="input-group"><label>Launch Site X</label><input type="number" id="lX" value="0" oninput="runCalculation()"></div>
-                <div class="input-group"><label>Launch Site Y</label><input type="number" id="lY" value="0" oninput="runCalculation()"></div>
-                <div class="input-group"><label>Target X</label><input type="number" id="tX" placeholder="0.0" oninput="runCalculation()"></div>
-                <div class="input-group"><label>Target Y</label><input type="number" id="tY" placeholder="0.0" oninput="runCalculation()"></div>
-                <div class="input-group full-width"><label>Enter change of elevation (s)</label><input type="number" id="elevS" placeholder="0.0" oninput="runCalculation()"></div>
-            `;
-        } else if (mode === "2") {
-            title.innerText = "Mode 2: Find Elevation Using Rangefinder";
-            container.innerHTML = `
-                <div class="input-group"><label>Launch Site X</label><input type="number" id="lX" value="0" oninput="runCalculation()"></div>
-                <div class="input-group"><label>Launch Site Y</label><input type="number" id="lY" value="0" oninput="runCalculation()"></div>
-                <div class="input-group"><label>Target X</label><input type="number" id="tX" placeholder="0.0" oninput="runCalculation()"></div>
-                <div class="input-group"><label>Target Y</label><input type="number" id="tY" placeholder="0.0" oninput="runCalculation()"></div>
-                <div class="input-group"><label>Enter range from your range finder</label><input type="number" id="rfRange" placeholder="0.0" oninput="runCalculation()"></div>
-                <div class="input-group"><label>Elevation direction multiplier (1 or -1)</label><input type="number" id="elevMult" value="1" placeholder="1 or -1" oninput="runCalculation()"></div>
-            `;
-        } else if (mode === "3") {
-            title.innerText = "Mode 3: Data String Input";
-            container.innerHTML = `
-                <div class="input-group full-width">
-                    <label>Enter Data String (dx, dy, s separated by commas)</label>
-                    <input type="text" id="dataString" placeholder="e.g. 100, 200, 15" oninput="runCalculation()">
-                </div>
-            `;
-        } else if (mode === "4") {
-            title.innerText = "Mode 4: Rangefinder Angle and Range";
-            container.innerHTML = `
-                <div class="input-group"><label>Enter range finder's display range</label><input type="number" id="rfRangeOnly" placeholder="0.0" oninput="runCalculation()"></div>
-                <div class="input-group"><label>Enter range finder's display angle</label><input type="number" id="rfAngle" placeholder="0.0" oninput="runCalculation()"></div>
-            `;
-        }
+function calculation(dx, dy, s) {
+  const d = (dx ** 2 + dy ** 2) ** (1 / 2);
+  if (check(d, s)) {
+    let k1, k2;
+    if (dx === 0 && dy === 0) {
+      k1 = 0;
+      k2 = 0;
+    } else {
+      k1 = (u ** 2 - (u ** 4 - G * (G * d ** 2 + 2 * s * u ** 2)) ** 0.5) / (G * d);
+      k2 = (u ** 2 + (u ** 4 - G * (G * d ** 2 + 2 * s * u ** 2)) ** 0.5) / (G * d);
     }
-
-    function resetOutput() {
-        document.getElementById('outputPanel').innerHTML = `<span style="color:#555;">Awaiting dynamic calculations...</span>`;
+    const direct_angle = (Math.atan(k1) * 180) / Math.PI;
+    const indirect_angle = (Math.atan(k2) * 180) / Math.PI;
+    let bearing;
+    try {
+      bearing = (Math.atan2(dx, dy) * 180) / Math.PI;
+      if (bearing < 0) bearing += 360;
+    } catch (e) {
+      bearing = 0;
     }
+    const text = `
+    Distance from target: ${pf(round(d, 2))}
+    Direct fire angle: ${pf(round(direct_angle, 1))}°
+    Direction: ${Math.trunc(round(bearing - (1 * time(direct_angle, d)) / 12, 0))}°
+    Time of travel: ${pf(round(time(direct_angle, d), 1))} seconds
+    Indirect fire angle: ${pf(round(indirect_angle, 1))}°
+    Time of travel: ${pf(round(time(indirect_angle, d), 1))} seconds
+    Direction: ${Math.trunc(round(bearing - (1 * time(indirect_angle, d)) / 12, 0))}°
+    id: ${dx},${dy},${s}
+    `;
+    console.log(text);
+  } else {
+    console.log(`
+    Target not reachable
+    `);
+  }
+}
 
-    function check(d, s) {
-        return (Math.pow(u, 4) - G * (G * Math.pow(d, 2) + 2 * s * Math.pow(u, 2))) >= 0;
+// MAIN PROGRAM
+async function main() {
+  console.log(`Modes:
+1-Known elevation difference mode
+2-Find elevation using rangefinder mode
+3-Enter data string mode
+4-rangefinder angle and range mode `);
+
+  const mode = parseInt(await ask(""), 10);
+  if (Number.isNaN(mode)) throw new Error("invalid literal for int()");
+
+  while (true) {
+    if (mode === 1 || mode === 2) {
+      const launch_locationX = await get_float("Enter X coordinates of launch site: ");
+      const launch_locationY = await get_float("Enter Y coordinates of launch site: ");
+      let repeat = true;
+      while (repeat) {
+        const targetX = await get_float("Enter X coordinates of target: ");
+        const targetY = await get_float("Enter Y coordinates of target: ");
+        const dx = targetX - launch_locationX;
+        const dy = targetY - launch_locationY;
+        let s;
+        if (mode === 1) {
+          s = await get_float("Enter change of elevation: ");
+        }
+        if (mode === 2) {
+          s = await find_elevation(dx, dy);
+          s = s * parseInt(await ask("1 or -1"), 10);
+        }
+        calculation(dx, dy, s);
+      }
+    } else if (mode === 3) {
+      const inputstring = await ask("");
+      const listy = inputstring.split(",").map((p) => p.trim());
+      const dx = Number(listy[0]);
+      const dy = Number(listy[1]);
+      const s = Number(listy[2]);
+      calculation(dx, dy, s);
+    } else if (mode === 4) {
+      const rangefinder_range = await get_float("Enter range finder's display range: ");
+      const rangefinder_angle = await get_float("Enter range finder's display angle: ");
+      calculation(
+        rangefinder_range * Math.cos((rangefinder_angle * Math.PI) / 180),
+        0,
+        rangefinder_range * Math.sin((rangefinder_angle * Math.PI) / 180)
+      );
     }
+  }
+}
 
-    function time(theta, d) {
-        return d / (u * Math.cos(theta * (Math.PI / 180)));
-    }
-
-    function runCalculation() {
-        const mode = document.getElementById('modeSelect').value;
-        const outputPanel = document.getElementById('outputPanel');
-        
-        let dx = 0, dy = 0, s = 0;
-
-        if (mode === "1" || mode === "2") {
-            const lX = parseFloat(document.getElementById('lX').value) || 0;
-            const lY = parseFloat(document.getElementById('lY').value) || 0;
-            const tX = parseFloat(document.getElementById('tX').value);
-            const tY = parseFloat(document.getElementById('tY').value);
-            
-            if (isNaN(tX) || isNaN(tY)) { resetOutput(); return; }
-            
-            dx = tX - lX;
-            dy = tY - lY;
-
+main();
