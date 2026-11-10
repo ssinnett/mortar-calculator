@@ -1,8 +1,84 @@
-// Run with: node calculator.js  (Node 17+)
-const readline = require("readline/promises");
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-const ask = (prompt = "") => rl.question(prompt);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fire Calculator</title>
+<style>
+  :root { --bg:#fff; --fg:#1a1a1a; --muted:#666; --card:#f4f4f5; --border:#d4d4d8; --accent:#2563eb; --accent-fg:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#18181b; --fg:#f4f4f5; --muted:#a1a1aa; --card:#27272a; --border:#3f3f46; --accent:#3b82f6; --accent-fg:#fff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px 16px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 480px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 16px; }
+  label { display:block; font-size:.85rem; color:var(--muted); margin: 12px 0 4px; }
+  input, select { width:100%; padding:10px; font-size:1rem; border:1px solid var(--border);
+                  border-radius:8px; background:var(--card); color:var(--fg); }
+  .row { display:flex; gap:12px; }
+  .row > div { flex:1; }
+  .hidden { display:none; }
+  button { margin-top:20px; width:100%; padding:12px; font-size:1rem; border:0; border-radius:8px;
+           background:var(--accent); color:var(--accent-fg); cursor:pointer; }
+  pre { margin-top:20px; padding:14px; background:var(--card); border:1px solid var(--border);
+        border-radius:8px; white-space:pre-wrap; font-size:.95rem; min-height:3rem; }
+  .err { color:#dc2626; }
+  .note { font-size:.8rem; color:var(--muted); margin-top:4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Fire Calculator</h1>
 
+  <label for="mode">Mode</label>
+  <select id="mode">
+    <option value="1">1 - Known elevation difference</option>
+    <option value="2">2 - Find elevation using rangefinder</option>
+    <option value="3">3 - Enter data string</option>
+    <option value="4">4 - Rangefinder angle and range</option>
+  </select>
+
+  <div data-modes="1 2">
+    <div class="row">
+      <div><label>Launch X</label><input id="lx" inputmode="decimal"></div>
+      <div><label>Launch Y</label><input id="ly" inputmode="decimal"></div>
+    </div>
+    <div class="row">
+      <div><label>Target X</label><input id="tx" inputmode="decimal"></div>
+      <div><label>Target Y</label><input id="ty" inputmode="decimal"></div>
+    </div>
+  </div>
+
+  <div data-modes="1">
+    <label>Change of elevation</label><input id="elev" inputmode="decimal">
+  </div>
+
+  <div data-modes="2">
+    <label>Range from your range finder</label><input id="rf" inputmode="decimal">
+    <label>Target is</label>
+    <select id="sign">
+      <option value="1">Higher (1)</option>
+      <option value="-1">Lower (-1)</option>
+    </select>
+  </div>
+
+  <div data-modes="3">
+    <label>Data string (dx,dy,s)</label><input id="data" placeholder="e.g. 100,200,-5">
+  </div>
+
+  <div data-modes="4">
+    <label>Range finder display range</label><input id="rr" inputmode="decimal">
+    <label>Range finder display angle</label><input id="ra" inputmode="decimal">
+  </div>
+
+  <p class="note">Blank fields count as 0.</p>
+  <button id="go">Calculate</button>
+  <pre id="out"></pre>
+</main>
+
+<script>
 const G = 9.81;
 const u = 80;
 
@@ -17,18 +93,14 @@ function round(x, n = 0) {
   }
   return Number(x.toFixed(n));
 }
-
-// Python prints floats like 5.0 rather than 5
 const pf = (v) => (Number.isInteger(v) ? v.toFixed(1) : String(v));
 
-async function get_float(prompt) {
-  while (true) {
-    const ans = (await ask(prompt)).trim();
-    if (ans === "") return 0.0;
-    const num = Number(ans);
-    if (!Number.isNaN(num)) return num;
-    console.log("Enter a valid number: ");
-  }
+function get_float(id) {
+  const ans = document.getElementById(id).value.trim();
+  if (ans === "") return 0.0;
+  const num = Number(ans);
+  if (Number.isNaN(num)) throw new Error("Enter a valid number.");
+  return num;
 }
 
 function check(d, s) {
@@ -40,10 +112,12 @@ function time(theta, d) {
   return d / (u * Math.cos((theta * Math.PI) / 180));
 }
 
-async function find_elevation(dx, dy) {
-  const range = await get_float("Enter range from your range finder: ");
+function find_elevation(dx, dy) {
+  const range = get_float("rf");
   const horizontalD = (dx ** 2 + dy ** 2) ** (1 / 2);
-  return (range ** 2 - horizontalD ** 2) ** (1 / 2);
+  const s = (range ** 2 - horizontalD ** 2) ** (1 / 2);
+  if (Number.isNaN(s)) throw new Error("Range finder range is shorter than the horizontal distance.");
+  return s;
 }
 
 function calculation(dx, dy, s) {
@@ -66,72 +140,67 @@ function calculation(dx, dy, s) {
     } catch (e) {
       bearing = 0;
     }
-    const text = `
-    Distance from target: ${pf(round(d, 2))}
-    Direct fire angle: ${pf(round(direct_angle, 1))}°
-    Direction: ${Math.trunc(round(bearing - (1 * time(direct_angle, d)) / 12, 0))}°
-    Time of travel: ${pf(round(time(direct_angle, d), 1))} seconds
-    Indirect fire angle: ${pf(round(indirect_angle, 1))}°
-    Time of travel: ${pf(round(time(indirect_angle, d), 1))} seconds
-    Direction: ${Math.trunc(round(bearing - (1 * time(indirect_angle, d)) / 12, 0))}°
-    id: ${dx},${dy},${s}
-    `;
-    console.log(text);
-  } else {
-    console.log(`
-    Target not reachable
-    `);
+    return `Distance from target: ${pf(round(d, 2))}
+Direct fire angle: ${pf(round(direct_angle, 1))}°
+Direction: ${Math.trunc(round(bearing - (1 * time(direct_angle, d)) / 12, 0))}°
+Time of travel: ${pf(round(time(direct_angle, d), 1))} seconds
+Indirect fire angle: ${pf(round(indirect_angle, 1))}°
+Time of travel: ${pf(round(time(indirect_angle, d), 1))} seconds
+Direction: ${Math.trunc(round(bearing - (1 * time(indirect_angle, d)) / 12, 0))}°
+id: ${dx},${dy},${s}`;
   }
+  return "Target not reachable";
 }
 
-// MAIN PROGRAM
-async function main() {
-  console.log(`Modes:
-1-Known elevation difference mode
-2-Find elevation using rangefinder mode
-3-Enter data string mode
-4-rangefinder angle and range mode `);
-
-  const mode = parseInt(await ask(""), 10);
-  if (Number.isNaN(mode)) throw new Error("invalid literal for int()");
-
-  while (true) {
-    if (mode === 1 || mode === 2) {
-      const launch_locationX = await get_float("Enter X coordinates of launch site: ");
-      const launch_locationY = await get_float("Enter Y coordinates of launch site: ");
-      let repeat = true;
-      while (repeat) {
-        const targetX = await get_float("Enter X coordinates of target: ");
-        const targetY = await get_float("Enter Y coordinates of target: ");
-        const dx = targetX - launch_locationX;
-        const dy = targetY - launch_locationY;
-        let s;
-        if (mode === 1) {
-          s = await get_float("Enter change of elevation: ");
-        }
-        if (mode === 2) {
-          s = await find_elevation(dx, dy);
-          s = s * parseInt(await ask("1 or -1"), 10);
-        }
-        calculation(dx, dy, s);
-      }
-    } else if (mode === 3) {
-      const inputstring = await ask("");
-      const listy = inputstring.split(",").map((p) => p.trim());
-      const dx = Number(listy[0]);
-      const dy = Number(listy[1]);
-      const s = Number(listy[2]);
-      calculation(dx, dy, s);
-    } else if (mode === 4) {
-      const rangefinder_range = await get_float("Enter range finder's display range: ");
-      const rangefinder_angle = await get_float("Enter range finder's display angle: ");
-      calculation(
-        rangefinder_range * Math.cos((rangefinder_angle * Math.PI) / 180),
-        0,
-        rangefinder_range * Math.sin((rangefinder_angle * Math.PI) / 180)
-      );
+function run() {
+  const mode = Number(document.getElementById("mode").value);
+  if (mode === 1 || mode === 2) {
+    const dx = get_float("tx") - get_float("lx");
+    const dy = get_float("ty") - get_float("ly");
+    let s;
+    if (mode === 1) s = get_float("elev");
+    if (mode === 2) s = find_elevation(dx, dy) * Number(document.getElementById("sign").value);
+    return calculation(dx, dy, s);
+  }
+  if (mode === 3) {
+    const listy = document.getElementById("data").value.split(",").map((p) => p.trim());
+    const dx = Number(listy[0]);
+    const dy = Number(listy[1]);
+    const s = Number(listy[2]);
+    if ([dx, dy, s].some((v) => Number.isNaN(v) || listy.length < 3)) {
+      throw new Error("Enter three numbers separated by commas.");
     }
+    return calculation(dx, dy, s);
   }
+  const rangefinder_range = get_float("rr");
+  const rangefinder_angle = get_float("ra");
+  return calculation(
+    rangefinder_range * Math.cos((rangefinder_angle * Math.PI) / 180),
+    0,
+    rangefinder_range * Math.sin((rangefinder_angle * Math.PI) / 180)
+  );
 }
 
-main();
+function updateFields() {
+  const mode = document.getElementById("mode").value;
+  document.querySelectorAll("[data-modes]").forEach((el) => {
+    el.classList.toggle("hidden", !el.dataset.modes.split(" ").includes(mode));
+  });
+  document.getElementById("out").textContent = "";
+}
+
+document.getElementById("mode").addEventListener("change", updateFields);
+document.getElementById("go").addEventListener("click", () => {
+  const out = document.getElementById("out");
+  out.classList.remove("err");
+  try {
+    out.textContent = run();
+  } catch (e) {
+    out.classList.add("err");
+    out.textContent = e.message;
+  }
+});
+updateFields();
+</script>
+</body>
+</html>
