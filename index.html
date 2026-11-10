@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BRM5 Mortar Trajectory Calculator</title>
+    <style>
+        :root {
+            --bg-color: #121413;
+            --container-bg: #1a1d1a;
+            --accent-color: #4f6d4b;
+            --accent-hover: #61845c;
+            --text-color: #e3e7e3;
+            --border-color: #2c322b;
+            --alert-color: #a84343;
+        }
+
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .calculator-container {
+            background-color: var(--container-bg);
+            border: 2px solid var(--border-color);
+            padding: 30px;
+            border-radius: 4px;
+            width: 100%;
+            max-width: 450px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        h2 {
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 0;
+            color: #8fa88b;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 13px;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            background-color: #0c0d0c;
+            border: 1px solid var(--border-color);
+            color: #fff;
+            font-family: inherit;
+            box-sizing: border-box;
+            border-radius: 2px;
+        }
+
+        input:focus {
+            outline: 1px solid var(--accent-color);
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--accent-color);
+            border: none;
+            color: white;
+            font-family: inherit;
+            font-weight: bold;
+            text-transform: uppercase;
+            cursor: pointer;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            border-radius: 2px;
+        }
+
+        button:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .output-panel {
+            margin-top: 25px;
+            padding-top: 15px;
+            border-top: 1px dashed var(--border-color);
+        }
+
+        .error-message {
+            color: var(--alert-color);
+            font-weight: bold;
+            text-align: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #232922;
+        }
+
+        th {
+            color: #8fa88b;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+<div class="calculator-container">
+    <h2>BRM5 Mortar Calc</h2>
+    
+    <div class="input-group">
+        <label for="theta">Elevation Angle (Degrees):</label>
+        <input type="number" id="theta" placeholder="e.g., 45" value="45">
+    </div>
+
+    <div class="input-group">
+        <label for="distance">Target Distance (Meters):</label>
+        <input type="number" id="distance" placeholder="e.g., 200">
+    </div>
+
+    <button onclick="calculateTrajectory()">Compute Solutions</button>
+
+    <div class="output-panel" id="outputPanel" style="display: none;"></div>
+</div>
+
+<script>
+    function calculateTrajectory() {
+        // Grab inputs from DOM
+        const thetaDeg = parseFloat(document.getElementById('theta').value);
+        const d = parseFloat(document.getElementById('distance').value);
+        const outputPanel = document.getElementById('outputPanel');
+
+        // Validation
+        if (isNaN(thetaDeg) || isNaN(d)) {
+            outputPanel.innerHTML = `<p class="error-message">⚠️ PLEASE ENTER VALID NUMBERS</p>`;
+            outputPanel.style.display = 'block';
+            return;
+        }
+
+        // Convert degrees to radians (math.radians)
+        const theta = thetaDeg * (Math.PI / 180);
+
+        // Core Physics Constants from your code
+        const vi = 76;
+        const g = 9.8;
+
+        // X and Y calculations
+        const x = d * Math.cos(theta);
+        const y = d * Math.sin(theta);
+
+        // Determinant equation
+        const determinant = Math.pow(vi, 4) - g * (g * Math.pow(x, 2) + 2 * Math.pow(vi, 2) * (y - 1.14));
+
+        if (determinant < 0) {
+            outputPanel.innerHTML = `<p class="error-message">❌ TARGET IS OUT OF RANGE</p>`;
+            outputPanel.style.display = 'block';
+            return;
+        }
+
+        // Calculate High and Low launch angles (atan)
+        const r_high = Math.atan((Math.pow(vi, 2) + Math.sqrt(determinant)) / (g * x));
+        const r_low = Math.atan((Math.pow(vi, 2) - Math.sqrt(determinant)) / (g * x));
+
+        // Calculate Flight Times
+        const t_high = x / (vi * Math.cos(r_high));
+        const t_low = x / (vi * Math.cos(r_low));
+
+        // Convert answers back to degrees (math.degrees)
+        const lowAngleDeg = r_low * (180 / Math.PI);
+        const highAngleDeg = r_high * (180 / Math.PI);
+
+        // Render HTML results layout
+        outputPanel.innerHTML = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Solution</th>
+                        <th>Angle</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>LOW</strong></td>
+                        <td>${lowAngleDeg.toFixed(2)}°</td>
+                        <td>${t_low.toFixed(2)}s</td>
+                    </tr>
+                    <tr>
+                        <td><strong>HIGH</strong></td>
+                        <td>${highAngleDeg.toFixed(2)}°</td>
+                        <td>${t_high.toFixed(2)}s</td>
+                    </tr>
+                </tbody>
+            </table>
+        `;
+        outputPanel.style.display = 'block';
+    }
+</script>
+
+</body>
+</html>
