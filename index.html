@@ -45,6 +45,19 @@
             border-bottom: 1px solid #222222;
         }
 
+        select {
+            width: 100%;
+            background-color: #0a0a0a;
+            border: 1px solid #262626;
+            color: #ffffff;
+            padding: 12px;
+            font-family: inherit;
+            font-size: 14px;
+            border-radius: 4px;
+            outline: none;
+            cursor: pointer;
+        }
+
         .grid-inputs {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -55,6 +68,10 @@
             display: flex;
             flex-direction: column;
             gap: 6px;
+        }
+
+        .full-width {
+            grid-column: span 2;
         }
 
         label {
@@ -81,7 +98,6 @@
             border-color: #444444;
         }
 
-        /* Remove default spin buttons for number inputs */
         input::-webkit-outer-spin-button,
         input::-webkit-inner-spin-button {
             -webkit-appearance: none;
@@ -104,6 +120,7 @@
             cursor: pointer;
             border-radius: 4px;
             transition: background-color 0.2s, border-color 0.2s;
+            width: 100%;
         }
 
         button:hover {
@@ -119,14 +136,8 @@
         }
 
         .output-row {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 24px;
             font-size: 15px;
             color: #ffffff;
-            text-align: center;
             padding: 10px 0;
         }
 
@@ -147,30 +158,33 @@
 
 <div class="calculator-container">
     
-    <!-- Input Panel matching the layout style -->
+    <!-- Mode Selection -->
     <div class="panel">
-        <div class="panel-title">Trajectory Inputs</div>
-        <div class="grid-inputs">
-            <div class="input-group">
-                <label for="theta">Elevation Angle (°)</label>
-                <input type="number" id="theta" value="45" oninput="calculateTrajectory()">
-            </div>
-            <div class="input-group">
-                <label for="distance">Target Distance / Range (m)</label>
-                <input type="number" id="distance" placeholder="Enter meters" oninput="calculateTrajectory()">
-            </div>
-        </div>
+        <div class="panel-title">Select Mode</div>
+        <select id="modeSelect" onchange="switchMode()">
+            <option value="1">1 - Known Elevation Difference Mode</option>
+            <option value="2">2 - Find Elevation Using Rangefinder Mode</option>
+            <option value="3">3 - Enter Data String Mode</option>
+            <option value="4" selected>4 - Rangefinder Angle and Range Mode</option>
+        </select>
     </div>
 
-    <button onclick="calculateTrajectory()">Calculate</button>
+    <!-- Inputs Panel -->
+    <div class="panel">
+        <div class="panel-title" id="inputsTitle">Inputs</div>
+        <div class="grid-inputs" id="dynamicInputsContainer"></div>
+    </div>
+
+    <button onclick="runCalculation()">Calculate Solutions</button>
 
     <hr class="divider">
 
-    <!-- Bottom summary output row displaying all data strings from the new script -->
-    <div class="output-row" id="outputPanel">
-        <span>Direct: <span class="output-highlight">--</span></span>
-        <span>|</span>
-        <span>Indirect: <span class="output-highlight">--</span></span>
+    <!-- Output Panel -->
+    <div class="panel">
+        <div class="panel-title">Calculation Console Output</div>
+        <div class="output-row" id="outputPanel">
+            <span style="color:#555;">Awaiting dynamic calculations...</span>
+        </div>
     </div>
     
     <!-- Side Note Block -->
@@ -182,79 +196,84 @@
 </div>
 
 <script>
-    function calculateTrajectory() {
-        const thetaDeg = parseFloat(document.getElementById('theta').value);
-        const rangefinder_range = parseFloat(document.getElementById('distance').value);
-        const outputPanel = document.getElementById('outputPanel');
+    // Global Constants matching your Python script exactly
+    const G = 9.81;
+    const u = 80;
 
-        // Reset display if empty
-        if (isNaN(thetaDeg) || isNaN(rangefinder_range)) {
-            outputPanel.innerHTML = `
-                <span>Direct: <span class="output-highlight">--</span></span>
-                <span>|</span>
-                <span>Indirect: <span class="output-highlight">--</span></span>
+    window.onload = function() {
+        switchMode();
+    };
+
+    function switchMode() {
+        const mode = document.getElementById('modeSelect').value;
+        const container = document.getElementById('dynamicInputsContainer');
+        const title = document.getElementById('inputsTitle');
+        resetOutput();
+
+        if (mode === "1") {
+            title.innerText = "Mode 1: Known Elevation Difference";
+            container.innerHTML = `
+                <div class="input-group"><label>Launch Site X</label><input type="number" id="lX" value="0" oninput="runCalculation()"></div>
+                <div class="input-group"><label>Launch Site Y</label><input type="number" id="lY" value="0" oninput="runCalculation()"></div>
+                <div class="input-group"><label>Target X</label><input type="number" id="tX" placeholder="0.0" oninput="runCalculation()"></div>
+                <div class="input-group"><label>Target Y</label><input type="number" id="tY" placeholder="0.0" oninput="runCalculation()"></div>
+                <div class="input-group full-width"><label>Enter change of elevation (s)</label><input type="number" id="elevS" placeholder="0.0" oninput="runCalculation()"></div>
             `;
-            return;
+        } else if (mode === "2") {
+            title.innerText = "Mode 2: Find Elevation Using Rangefinder";
+            container.innerHTML = `
+                <div class="input-group"><label>Launch Site X</label><input type="number" id="lX" value="0" oninput="runCalculation()"></div>
+                <div class="input-group"><label>Launch Site Y</label><input type="number" id="lY" value="0" oninput="runCalculation()"></div>
+                <div class="input-group"><label>Target X</label><input type="number" id="tX" placeholder="0.0" oninput="runCalculation()"></div>
+                <div class="input-group"><label>Target Y</label><input type="number" id="tY" placeholder="0.0" oninput="runCalculation()"></div>
+                <div class="input-group"><label>Enter range from your range finder</label><input type="number" id="rfRange" placeholder="0.0" oninput="runCalculation()"></div>
+                <div class="input-group"><label>Elevation direction multiplier (1 or -1)</label><input type="number" id="elevMult" value="1" placeholder="1 or -1" oninput="runCalculation()"></div>
+            `;
+        } else if (mode === "3") {
+            title.innerText = "Mode 3: Data String Input";
+            container.innerHTML = `
+                <div class="input-group full-width">
+                    <label>Enter Data String (dx, dy, s separated by commas)</label>
+                    <input type="text" id="dataString" placeholder="e.g. 100, 200, 15" oninput="runCalculation()">
+                </div>
+            `;
+        } else if (mode === "4") {
+            title.innerText = "Mode 4: Rangefinder Angle and Range";
+            container.innerHTML = `
+                <div class="input-group"><label>Enter range finder's display range</label><input type="number" id="rfRangeOnly" placeholder="0.0" oninput="runCalculation()"></div>
+                <div class="input-group"><label>Enter range finder's display angle</label><input type="number" id="rfAngle" placeholder="0.0" oninput="runCalculation()"></div>
+            `;
         }
-
-        // New Script Global Constants
-        const G = 9.81;
-        const u = 80;
-
-        // Mode 4 calculation logic mapping to component vectors
-        const thetaRad = thetaDeg * (Math.PI / 180);
-        const dx = rangefinder_range * Math.cos(thetaRad);
-        const dy = 0;
-        const s = rangefinder_range * Math.sin(thetaRad);
-
-        // Calculate ground distance
-        const d = Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));
-
-        // Determinant check from new script
-        const determinant = Math.pow(u, 4) - G * (G * Math.pow(d, 2) + 2 * s * Math.pow(u, 2));
-
-        if (determinant < 0) {
-            outputPanel.innerHTML = `<span class="output-error">Target not reachable</span>`;
-            return;
-        }
-
-        let k1 = 0;
-        let k2 = 0;
-        if (dx !== 0 || dy !== 0) {
-            k1 = (Math.pow(u, 2) - Math.sqrt(determinant)) / (G * d);
-            k2 = (Math.pow(u, 2) + Math.sqrt(determinant)) / (G * d);
-        }
-
-        const direct_angle = Math.atan(k1) * (180 / Math.PI);
-        const indirect_angle = Math.atan(k2) * (180 / Math.PI);
-
-        // Time helper calculation
-        const t_direct = d / (u * Math.cos(direct_angle * (Math.PI / 180)));
-        const t_indirect = d / (u * Math.cos(indirect_angle * (Math.PI / 180)));
-
-        // Direction/bearing calculations adjusted for time metrics
-        let bearing = Math.atan2(dx, dy) * (180 / Math.PI);
-        if (bearing < 0) bearing += 360;
-
-        const dir_direct = Math.round(bearing - (1 * t_direct) / 12);
-        const dir_indirect = Math.round(bearing - (1 * t_indirect) / 12);
-
-        // Render clean, detailed breakdown matching your new Python output requirements
-        outputPanel.innerHTML = `
-            <div style="display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; max-width: 600px; margin: 0 auto; font-size: 14px;">
-                <div>Distance from target: <span class="output-highlight">${d.toFixed(2)}m</span></div>
-                <div style="border-top: 1px dashed #222; margin: 4px 0;"></div>
-                <div><strong>Direct Fire Angle:</strong> <span class="output-highlight">${direct_angle.toFixed(1)}°</span></div>
-                <div>Direction: <span class="output-highlight">${dir_direct}°</span></div>
-                <div>Time of Travel: <span class="output-highlight">${t_direct.toFixed(1)}s</span></div>
-                <div style="border-top: 1px dashed #222; margin: 4px 0;"></div>
-                <div><strong>Indirect Fire Angle:</strong> <span class="output-highlight">${indirect_angle.toFixed(1)}°</span></div>
-                <div>Direction: <span class="output-highlight">${dir_indirect}°</span></div>
-                <div>Time of Travel: <span class="output-highlight">${t_indirect.toFixed(1)}s</span></div>
-            </div>
-        `;
     }
-</script>
 
-</body>
-</html>
+    function resetOutput() {
+        document.getElementById('outputPanel').innerHTML = `<span style="color:#555;">Awaiting dynamic calculations...</span>`;
+    }
+
+    function check(d, s) {
+        return (Math.pow(u, 4) - G * (G * Math.pow(d, 2) + 2 * s * Math.pow(u, 2))) >= 0;
+    }
+
+    function time(theta, d) {
+        return d / (u * Math.cos(theta * (Math.PI / 180)));
+    }
+
+    function runCalculation() {
+        const mode = document.getElementById('modeSelect').value;
+        const outputPanel = document.getElementById('outputPanel');
+        
+        let dx = 0, dy = 0, s = 0;
+
+        if (mode === "1" || mode === "2") {
+            const lX = parseFloat(document.getElementById('lX').value) || 0;
+            const lY = parseFloat(document.getElementById('lY').value) || 0;
+            const tX = parseFloat(document.getElementById('tX').value);
+            const tY = parseFloat(document.getElementById('tY').value);
+            
+            if (isNaN(tX) || isNaN(tY)) { resetOutput(); return; }
+            
+            dx = tX - lX;
+            dy = tY - lY;
+
+            if (mode === "1") {
+                s = parseFloat(document.getElementById('elevS').value);
