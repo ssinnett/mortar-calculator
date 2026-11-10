@@ -158,14 +158,14 @@
 
 <div class="calculator-container">
     
-    <!-- Mode Selection -->
+    <!-- Mode Selection Menu -->
     <div class="panel">
         <div class="panel-title">Select Mode</div>
         <select id="modeSelect" onchange="switchMode()">
-            <option value="1">1 - Known Elevation Difference Mode</option>
+            <option value="1" selected>1 - Known Elevation Difference Mode</option>
             <option value="2">2 - Find Elevation Using Rangefinder Mode</option>
             <option value="3">3 - Enter Data String Mode</option>
-            <option value="4" selected>4 - Rangefinder Angle and Range Mode</option>
+            <option value="4">4 - Rangefinder Angle and Range Mode</option>
         </select>
     </div>
 
@@ -179,7 +179,7 @@
 
     <hr class="divider">
 
-    <!-- Output Panel -->
+    <!-- Output Panel Layout -->
     <div class="panel">
         <div class="panel-title">Calculation Console Output</div>
         <div class="output-row" id="outputPanel">
@@ -196,7 +196,7 @@
 </div>
 
 <script>
-    // Global Constants matching your Python script exactly
+    // Exact Global Constants from Python Source
     const G = 9.81;
     const u = 80;
 
