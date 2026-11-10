@@ -124,7 +124,7 @@
             align-items: center;
             flex-wrap: wrap;
             gap: 24px;
-            font-size: 16px;
+            font-size: 15px;
             color: #ffffff;
             text-align: center;
             padding: 10px 0;
@@ -147,7 +147,7 @@
 
 <div class="calculator-container">
     
-    <!-- Input Panel matching the screenshot layout style -->
+    <!-- Input Panel matching the layout style -->
     <div class="panel">
         <div class="panel-title">Trajectory Inputs</div>
         <div class="grid-inputs">
@@ -156,7 +156,7 @@
                 <input type="number" id="theta" value="45" oninput="calculateTrajectory()">
             </div>
             <div class="input-group">
-                <label for="distance">Target Distance (m)</label>
+                <label for="distance">Target Distance / Range (m)</label>
                 <input type="number" id="distance" placeholder="Enter meters" oninput="calculateTrajectory()">
             </div>
         </div>
@@ -166,15 +166,16 @@
 
     <hr class="divider">
 
-    <!-- Bottom summary output row matching the screenshot layout style -->
+    <!-- Bottom summary output row displaying all data strings from the new script -->
     <div class="output-row" id="outputPanel">
-        <span>Low Angle: <span class="output-highlight">--</span></span>
+        <span>Direct: <span class="output-highlight">--</span></span>
         <span>|</span>
-        <span>High Angle: <span class="output-highlight">--</span></span>
+        <span>Indirect: <span class="output-highlight">--</span></span>
     </div>
+    
     <!-- Side Note Block -->
-    <div style="margin-top: 40px; border-top: 1px solid #1a1a1a; padding-top: 15px; font-size: 11px; color: #4169E1; text-align: center; letter-spacing: 0.5px; line-height: 1.6;">
-       ***Aim a little bit to the right(abt 1 to 2 degree) for farther target <br>
+    <div style="margin-top: 40px; border-top: 1px solid #1a1a1a; padding-top: 15px; font-size: 11px; color: #555555; text-align: center; letter-spacing: 0.5px; line-height: 1.6;">
+       Aim a little bit to the right(abt 1 to 2 degree) for farther target <br>
        Credits to u/alex52794
     </div>
 
@@ -183,47 +184,74 @@
 <script>
     function calculateTrajectory() {
         const thetaDeg = parseFloat(document.getElementById('theta').value);
-        const d = parseFloat(document.getElementById('distance').value);
+        const rangefinder_range = parseFloat(document.getElementById('distance').value);
         const outputPanel = document.getElementById('outputPanel');
 
         // Reset display if empty
-        if (isNaN(thetaDeg) || isNaN(d)) {
+        if (isNaN(thetaDeg) || isNaN(rangefinder_range)) {
             outputPanel.innerHTML = `
-                <span>Low Angle: <span class="output-highlight">--</span></span>
+                <span>Direct: <span class="output-highlight">--</span></span>
                 <span>|</span>
-                <span>High Angle: <span class="output-highlight">--</span></span>
+                <span>Indirect: <span class="output-highlight">--</span></span>
             `;
             return;
         }
 
-        const theta = thetaDeg * (Math.PI / 180);
-        const vi = 76;
-        const g = 9.8;
+        // New Script Global Constants
+        const G = 9.81;
+        const u = 80;
 
-        const x = d * Math.cos(theta);
-        const y = d * Math.sin(theta);
+        // Mode 4 calculation logic mapping to component vectors
+        const thetaRad = thetaDeg * (Math.PI / 180);
+        const dx = rangefinder_range * Math.cos(thetaRad);
+        const dy = 0;
+        const s = rangefinder_range * Math.sin(thetaRad);
 
-        const determinant = Math.pow(vi, 4) - g * (g * Math.pow(x, 2) + 2 * Math.pow(vi, 2) * (y - 1.14));
+        // Calculate ground distance
+        const d = Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));
+
+        // Determinant check from new script
+        const determinant = Math.pow(u, 4) - G * (G * Math.pow(d, 2) + 2 * s * Math.pow(u, 2));
 
         if (determinant < 0) {
-            outputPanel.innerHTML = `<span class="output-error">Target is out of range</span>`;
+            outputPanel.innerHTML = `<span class="output-error">Target not reachable</span>`;
             return;
         }
 
-        const r_high = Math.atan((Math.pow(vi, 2) + Math.sqrt(determinant)) / (g * x));
-        const r_low = Math.atan((Math.pow(vi, 2) - Math.sqrt(determinant)) / (g * x));
+        let k1 = 0;
+        let k2 = 0;
+        if (dx !== 0 || dy !== 0) {
+            k1 = (Math.pow(u, 2) - Math.sqrt(determinant)) / (G * d);
+            k2 = (Math.pow(u, 2) + Math.sqrt(determinant)) / (G * d);
+        }
 
-        const t_high = x / (vi * Math.cos(r_high));
-        const t_low = x / (vi * Math.cos(r_low));
+        const direct_angle = Math.atan(k1) * (180 / Math.PI);
+        const indirect_angle = Math.atan(k2) * (180 / Math.PI);
 
-        const lowAngleDeg = r_low * (180 / Math.PI);
-        const highAngleDeg = r_high * (180 / Math.PI);
+        // Time helper calculation
+        const t_direct = d / (u * Math.cos(direct_angle * (Math.PI / 180)));
+        const t_indirect = d / (u * Math.cos(indirect_angle * (Math.PI / 180)));
 
-        // Render matching the bottom row text style from the image
+        // Direction/bearing calculations adjusted for time metrics
+        let bearing = Math.atan2(dx, dy) * (180 / Math.PI);
+        if (bearing < 0) bearing += 360;
+
+        const dir_direct = Math.round(bearing - (1 * t_direct) / 12);
+        const dir_indirect = Math.round(bearing - (1 * t_indirect) / 12);
+
+        // Render clean, detailed breakdown matching your new Python output requirements
         outputPanel.innerHTML = `
-            <span>Low Angle: <span class="output-highlight">${lowAngleDeg.toFixed(2)}° (${t_low.toFixed(1)}s)</span></span>
-            <span>|</span>
-            <span>High Angle: <span class="output-highlight">${highAngleDeg.toFixed(2)}° (${t_high.toFixed(1)}s)</span></span>
+            <div style="display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; max-width: 600px; margin: 0 auto; font-size: 14px;">
+                <div>Distance from target: <span class="output-highlight">${d.toFixed(2)}m</span></div>
+                <div style="border-top: 1px dashed #222; margin: 4px 0;"></div>
+                <div><strong>Direct Fire Angle:</strong> <span class="output-highlight">${direct_angle.toFixed(1)}°</span></div>
+                <div>Direction: <span class="output-highlight">${dir_direct}°</span></div>
+                <div>Time of Travel: <span class="output-highlight">${t_direct.toFixed(1)}s</span></div>
+                <div style="border-top: 1px dashed #222; margin: 4px 0;"></div>
+                <div><strong>Indirect Fire Angle:</strong> <span class="output-highlight">${indirect_angle.toFixed(1)}°</span></div>
+                <div>Direction: <span class="output-highlight">${dir_indirect}°</span></div>
+                <div>Time of Travel: <span class="output-highlight">${t_indirect.toFixed(1)}s</span></div>
+            </div>
         `;
     }
 </script>
